@@ -42,7 +42,11 @@ class MetadataStore:
 
     def _init_sqlite(self, db_path: str) -> None:
         self._db_path = db_path
-        self._conn = sqlite3.connect(db_path, check_same_thread=False)
+        self._conn = sqlite3.connect(db_path, check_same_thread=False, isolation_level=None, timeout=10.0)
+        try:
+            self._conn.execute("PRAGMA journal_mode=WAL;")
+        except Exception:
+            pass
         self._refresh_cache_from_sqlite()
 
     def _refresh_cache_from_sqlite(self) -> None:
@@ -73,37 +77,38 @@ class MetadataStore:
         if not uuid:
             return None
         with self._lock:
-            # Fast path: check in-memory cache
-            if uuid in self._by_uuid:
-                return self._by_uuid[uuid]
-            
-            # Fallback to direct DB query if present
+            # Solution 1: Live query from SQLite DB for real-time drift consistency
             if self._conn:
-                cur = self._conn.cursor()
-                cur.execute("SELECT raw_json FROM metadata WHERE global_uuid = ?", (uuid,))
-                row = cur.fetchone()
-                if row:
-                    rec = json.loads(row[0])
-                    self._by_uuid[uuid] = rec
-                    return rec
-            return None
+                try:
+                    cur = self._conn.cursor()
+                    cur.execute("SELECT raw_json FROM metadata WHERE global_uuid = ?", (uuid,))
+                    row = cur.fetchone()
+                    if row and row[0]:
+                        rec = json.loads(row[0])
+                        self._by_uuid[uuid] = rec
+                        return rec
+                except Exception:
+                    pass
+            # Fallback to in-memory cache
+            return self._by_uuid.get(uuid)
 
     def get_by_file(self, file_name: str) -> Optional[Dict[str, Any]]:
         if not file_name:
             return None
         with self._lock:
-            if file_name in self._by_file:
-                return self._by_file[file_name]
-            
+            # Solution 1: Live query from SQLite DB for real-time drift consistency
             if self._conn:
-                cur = self._conn.cursor()
-                cur.execute("SELECT raw_json FROM metadata WHERE file_name = ?", (file_name,))
-                row = cur.fetchone()
-                if row:
-                    rec = json.loads(row[0])
-                    self._by_file[file_name] = rec
-                    return rec
-            return None
+                try:
+                    cur = self._conn.cursor()
+                    cur.execute("SELECT raw_json FROM metadata WHERE file_name = ?", (file_name,))
+                    row = cur.fetchone()
+                    if row and row[0]:
+                        rec = json.loads(row[0])
+                        self._by_file[file_name] = rec
+                        return rec
+                except Exception:
+                    pass
+            return self._by_file.get(file_name)
 
     def update_location(
         self,
@@ -157,4 +162,13 @@ class MetadataStore:
 
     def all(self) -> List[Dict[str, Any]]:
         with self._lock:
+            if self._conn:
+                try:
+                    cur = self._conn.cursor()
+                    cur.execute("SELECT raw_json FROM metadata")
+                    rows = cur.fetchall()
+                    if rows:
+                        return [json.loads(r[0]) for r in rows if r and r[0]]
+                except Exception:
+                    pass
             return list(self._all)

@@ -268,20 +268,44 @@ def get_storage_summary():
         except Exception as e:
             logger.error(f"Error reading access model: {e}")
 
-    storage_map = {}
-    if os.path.exists(storage_map_path):
-        try:
-            with open(storage_map_path, "r", encoding="utf-8") as f:
-                storage_map = json.load(f)
-        except Exception as e:
-            logger.error(f"Error reading storage map: {e}")
-
-    # Count files per bucket
+    # Dynamic Storage & Bucket File Counts (prioritizes live SQLite metadata.db)
     bucket_counts = {}
-    for doc_name, doc_info in storage_map.items():
-        b = doc_info.get("bucket")
-        if b:
-            bucket_counts[b] = bucket_counts.get(b, 0) + 1
+    bucket_files = {}
+    total_docs = 0
+
+    db_path = os.path.join(service.artifacts_dir, "metadata.db")
+    if os.path.exists(db_path):
+        try:
+            import sqlite3
+            conn = sqlite3.connect(db_path, timeout=5)
+            cur = conn.cursor()
+            cur.execute("SELECT file_name, bucket FROM metadata")
+            rows = cur.fetchall()
+            conn.close()
+            for fn, b_name in rows:
+                if b_name:
+                    bucket_counts[b_name] = bucket_counts.get(b_name, 0) + 1
+                    bucket_files.setdefault(b_name, []).append(fn)
+            total_docs = len(rows)
+        except Exception as e:
+            logger.warning(f"Dynamic storage lookup from SQLite failed: {e}")
+
+    # Fallback to static JSON snapshot if metadata.db has not been populated yet
+    if not bucket_counts:
+        storage_map = {}
+        if os.path.exists(storage_map_path):
+            try:
+                with open(storage_map_path, "r", encoding="utf-8") as f:
+                    storage_map = json.load(f)
+            except Exception as e:
+                logger.error(f"Error reading storage map: {e}")
+
+        total_docs = len(storage_map)
+        for doc_name, doc_info in storage_map.items():
+            b = doc_info.get("bucket")
+            if b:
+                bucket_counts[b] = bucket_counts.get(b, 0) + 1
+                bucket_files.setdefault(b, []).append(doc_name)
 
     # AWS Buckets
     aws_buckets = []
@@ -291,7 +315,8 @@ def get_storage_summary():
         aws_buckets.append({
             "name": b_name,
             "policy": f"ABAC: {attr_str}" if attr_str else "ABAC",
-            "file_count": bucket_counts.get(b_name, 0)
+            "file_count": bucket_counts.get(b_name, 0),
+            "files": bucket_files.get(b_name, [])
         })
 
     # GCP Buckets
@@ -301,7 +326,8 @@ def get_storage_summary():
         gcp_buckets.append({
             "name": b_name,
             "policy": f"RBAC: {role_name}",
-            "file_count": bucket_counts.get(b_name, 0)
+            "file_count": bucket_counts.get(b_name, 0),
+            "files": bucket_files.get(b_name, [])
         })
 
     total_aws_files = sum(b["file_count"] for b in aws_buckets)
@@ -309,7 +335,7 @@ def get_storage_summary():
 
     return jsonify({
         "status": "success",
-        "total_documents": len(storage_map),
+        "total_documents": total_docs,
         "aws": {
             "provider": "Amazon Web Services (S3)",
             "region": os.environ.get("AWS_REGION", "ap-south-1"),

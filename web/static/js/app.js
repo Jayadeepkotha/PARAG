@@ -386,11 +386,12 @@ async function loadStorageSummary() {
       } else {
         awsList.innerHTML = summary.aws.buckets.map(b => `
           <div style="background: #ffffff; border: 1px solid #e2e8f0; padding: 7px 10px; border-radius: 5px; display: flex; align-items: center; justify-content: space-between; gap: 6px;">
-            <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+            <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 78%;">
               <strong style="color: #0f172a; font-size: 11px;">${b.name}</strong>
               <div style="color: #64748b; font-size: 10px;">${b.policy}</div>
+              ${(b.files && b.files.length > 0) ? `<div style="color: #2563eb; font-size: 9.5px; font-family: var(--font-mono); margin-top: 2px; overflow: hidden; text-overflow: ellipsis;">📄 ${b.files.join(", ")}</div>` : ''}
             </div>
-            <span class="badge badge-allowed" style="font-weight: 700; font-size: 10.5px; flex-shrink: 0; box-shadow: 0 0 6px rgba(34, 197, 94, 0.4);">
+            <span class="badge ${b.file_count > 0 ? 'badge-allowed' : 'badge-neutral'}" style="font-weight: 700; font-size: 10.5px; flex-shrink: 0; ${b.file_count > 0 ? 'box-shadow: 0 0 6px rgba(34, 197, 94, 0.4);' : ''}">
               ${b.file_count} files
             </span>
           </div>
@@ -405,11 +406,12 @@ async function loadStorageSummary() {
       } else {
         gcpList.innerHTML = summary.gcp.buckets.map(b => `
           <div style="background: #ffffff; border: 1px solid #e2e8f0; padding: 7px 10px; border-radius: 5px; display: flex; align-items: center; justify-content: space-between; gap: 6px;">
-            <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+            <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 78%;">
               <strong style="color: #0f172a; font-size: 11px;">${b.name}</strong>
               <div style="color: #64748b; font-size: 10px;">${b.policy}</div>
+              ${(b.files && b.files.length > 0) ? `<div style="color: #2563eb; font-size: 9.5px; font-family: var(--font-mono); margin-top: 2px; overflow: hidden; text-overflow: ellipsis;">📄 ${b.files.join(", ")}</div>` : ''}
             </div>
-            <span class="badge badge-allowed" style="font-weight: 700; font-size: 10.5px; flex-shrink: 0; box-shadow: 0 0 6px rgba(34, 197, 94, 0.4);">
+            <span class="badge ${b.file_count > 0 ? 'badge-allowed' : 'badge-neutral'}" style="font-weight: 700; font-size: 10.5px; flex-shrink: 0; ${b.file_count > 0 ? 'box-shadow: 0 0 6px rgba(34, 197, 94, 0.4);' : ''}">
               ${b.file_count} files
             </span>
           </div>
@@ -504,3 +506,11 @@ if (btnTeardownPipeline) {
 // Start
 initializeApp();
 loadStorageSummary();
+
+// Real-Time Storage Sync: Periodically poll storage summary if Dataset tab is active
+setInterval(() => {
+  const activeTab = document.querySelector(".nav-tab.active");
+  if (activeTab && activeTab.dataset && activeTab.dataset.tab === "dataset") {
+    loadStorageSummary();
+  }
+}, 3000);

@@ -72,12 +72,12 @@ class DriftControlService:
         gcp_deployed = False
         gcp_sub_name = None
 
-        # Check AWS SQS (with 1.0s fast timeout)
+        # Check AWS SQS (with realistic network timeout)
         try:
             import boto3
             from botocore.config import Config
-            fast_cfg = Config(connect_timeout=1.0, read_timeout=1.0, retries={"max_attempts": 0})
-            aws_region = os.environ.get("AWS_REGION", "ap-south-1")
+            fast_cfg = Config(connect_timeout=2.5, read_timeout=2.5, retries={"max_attempts": 0})
+            aws_region = os.environ.get("AWS_REGION", "us-east-1")
             access_key = os.environ.get("AWS_ADMIN_ACCESS_KEY")
             secret_key = os.environ.get("AWS_ADMIN_SECRET_KEY")
             if access_key and secret_key:
@@ -94,16 +94,18 @@ class DriftControlService:
         except Exception:
             aws_deployed = False
 
-        # Check GCP Pub/Sub (with 1.0s fast timeout)
+        # Check GCP Pub/Sub (with realistic cross-continental network timeout)
         try:
             from google.cloud import pubsub_v1
             gcp_key = os.environ.get("GCP_ADMIN_KEY_PATH")
+            if gcp_key and not os.path.isabs(gcp_key):
+                gcp_key = os.path.abspath(os.path.join(BASE_DIR, gcp_key))
             project_id = os.environ.get("GCP_PROJECT_ID")
             if gcp_key and os.path.exists(gcp_key) and project_id:
                 sub_client = pubsub_v1.SubscriberClient.from_service_account_json(gcp_key)
                 sub_path = f"projects/{project_id}/subscriptions/permission-rag-gcp-drift-sub"
                 try:
-                    sub_client.get_subscription(request={"subscription": sub_path}, timeout=1.0)
+                    sub_client.get_subscription(request={"subscription": sub_path}, timeout=4.0)
                     gcp_deployed = True
                     gcp_sub_name = sub_path
                 except Exception:

@@ -153,7 +153,7 @@
   cursor: not-allowed;
 }
 
-/* Terminal Console Box - Expands dynamically to fill remaining height */
+/* Terminal Console Box - Bounded Scrollable Container */
 .terminal-console-box {
   background: #090d16;
   color: #38bdf8;
@@ -162,9 +162,9 @@
   line-height: 1.6;
   padding: 14px;
   border-radius: var(--radius-sm);
-  flex: 1;
-  height: 100%;
-  min-height: 280px;
+  height: 480px;
+  max-height: 500px;
+  min-height: 300px;
   overflow-y: auto;
   border: 1px solid #1e293b;
   white-space: pre-wrap;

@@ -96,13 +96,14 @@ def run_query():
     misses_in_query = len(per_uuid_dur) - hits_in_query if cache_enabled else len(per_uuid_dur)
     is_cache_hit = (hits_in_query > 0 and misses_in_query == 0) if (cache_enabled and per_uuid_dur) else False
 
-    # Build document attribution ledger
+    # Build document attribution ledger directly from live metadata.db (Single Source of Truth)
     doc_results = []
-    uuid_to_meta = service.question_processor.uuid_to_metadata
 
     for row in retrieved:
         uid = row.get("global_uuid")
-        meta = uuid_to_meta.get(uid, {})
+        meta = service.metadata_store.get_by_uuid(uid) if service.metadata_store else {}
+        if not meta and service.question_processor:
+            meta = getattr(service.question_processor, "uuid_to_metadata", {}).get(uid, {})
         fname = meta.get("file_name", uid)
         
         # Extract bucket and provider
